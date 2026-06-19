@@ -99,6 +99,27 @@ builder.Services.AddOpenIddict()
                .EnableTokenEndpointPassthrough();
 
         options.RegisterScopes(OpenIddictConstants.Scopes.OpenId, OpenIddictConstants.Scopes.Profile, OpenIddictConstants.Scopes.OfflineAccess);
+
+
+        // 读取生命周期配置（从 appsettings 或环境变量）
+        var accessTokenLifetime = builder.Configuration.GetValue<int>("OpenIddictSettings:AccessTokenLifetimeMinutes", 60);
+        var refreshTokenLifetime = builder.Configuration.GetValue<int>("OpenIddictSettings:RefreshTokenLifetimeDays", 14);
+
+        // 设置 Access Token 有效期（分钟）
+        options.SetAccessTokenLifetime(TimeSpan.FromMinutes(accessTokenLifetime));
+        // 设置 Refresh Token 有效期（天）
+        options.SetRefreshTokenLifetime(TimeSpan.FromDays(refreshTokenLifetime));
+
+
+        // （可选）设置 Issuer，建议显式指定，避免从请求中自动推断导致不一致
+        var issuer = builder.Configuration["OpenIddictSettings:Issuer"];
+        if (!string.IsNullOrEmpty(issuer))
+        {
+            options.SetIssuer(new Uri(issuer));
+        }
+
+
+
     }) 
     .AddValidation(options =>
     {
