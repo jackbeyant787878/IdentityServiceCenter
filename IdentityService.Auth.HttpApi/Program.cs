@@ -2,12 +2,16 @@ using IdentityService.Auth.Application.Authentication.Commands;
 using IdentityService.Auth.Application.IRepositories;
 using IdentityService.Auth.Infrastructure.DataBase;
 using IdentityService.Auth.Infrastructure.Repositories;
+using IdentityService.Auth.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using OpenIddict.Validation.AspNetCore;
 using PaymentCenter.Auth.Application.Security;
+using System.Diagnostics;
+using System.Security.Cryptography;
 var builder = WebApplication.CreateBuilder(args);
 
 
@@ -66,9 +70,20 @@ builder.Services.AddOpenIddict()
               .AllowClientCredentialsFlow() 
               .AllowRefreshTokenFlow();
 
-        // 2026 开发调试阶段采用临时开发双证
-        options.AddDevelopmentEncryptionCertificate()
-               .AddDevelopmentSigningCertificate();
+       
+        // 加载签名和加密密钥
+        var (signingKey, encryptionKey) = KeyHelper.LoadKeys(builder.Configuration);
+
+        // 从配置读取是否禁用加密（默认禁用，仅开发环境）
+        var disableEncryption = builder.Configuration.GetValue<bool>("OpenIddict:DisableEncryption", true);
+        if (disableEncryption)
+        {
+            options.DisableAccessTokenEncryption();
+        }
+
+        // 注册签名和加密密钥
+        options.AddSigningKey(signingKey);
+        options.AddEncryptionKey(encryptionKey);
 
         // 强迫 OIDC 服务接管 ASP.NET Core 的认证管线响应
         options.UseAspNetCore()
