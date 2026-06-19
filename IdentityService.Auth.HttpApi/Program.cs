@@ -72,7 +72,7 @@ builder.Services.AddOpenIddict()
 
        
         // 加载签名和加密密钥
-        var (signingKey, encryptionKey) = KeyHelper.LoadKeys(builder.Configuration);
+        var (signingKeys, encryptionKeys) = KeyHelper.LoadKeys(builder.Configuration);
 
         // 从配置读取是否禁用加密（默认禁用，仅开发环境）
         var disableEncryption = builder.Configuration.GetValue<bool>("OpenIddict:DisableEncryption", true);
@@ -82,8 +82,17 @@ builder.Services.AddOpenIddict()
         }
 
         // 注册签名和加密密钥
-        options.AddSigningKey(signingKey);
-        options.AddEncryptionKey(encryptionKey);
+        // 3. 循环注册所有签名密钥（第一个加入的会自动成为签发 Key，后续的仅用于验签）
+        foreach (var signingKey in signingKeys)
+        {
+            options.AddSigningKey(signingKey);
+        }
+
+        // 4. 循环注册所有加密密钥（第一个加入的会自动成为加密 Key，后续的仅用于解密）
+        foreach (var encryptionKey in encryptionKeys)
+        {
+            options.AddEncryptionKey(encryptionKey);
+        }
 
         // 强迫 OIDC 服务接管 ASP.NET Core 的认证管线响应
         options.UseAspNetCore()
