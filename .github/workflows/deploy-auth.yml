@@ -21,7 +21,9 @@ jobs:
           tags: |
             ${{ secrets.TENCENT_REGISTRY }}:latest
             ${{ secrets.TENCENT_REGISTRY }}:${{ github.sha }}
-
+            # 【新增优化】利用 GitHub Actions 缓存机制，避免重复构建未变更的层
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
