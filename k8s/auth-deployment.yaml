@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-deployment
+  namespace: identity
+spec:
+  replicas: 1                     # 单副本：Hangfire 定时任务避免重复执行
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0                 # 单副本时不可超出（若以后扩副本可调整为 1）
+      maxUnavailable: 0           # 更新期间保证服务不中断
+  selector:
+    matchLabels:
+      app: auth-svc
+  template:
+    metadata:
+      labels:
+        app: auth-svc
+    spec:
+      securityContext:
+        fsGroup: 1654             # 确保 /app/keys 对容器用户可读写
+      imagePullSecrets:
+      - name: tcr-secret          # 拉取腾讯云 TCR 私有镜像的凭据
+      containers:
+      - name: auth-api
+        image: PLACEHOLDER_IMAGE  # CI 中会被 sed 替换为实际镜像
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5008
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        envFrom:
+        - configMapRef:
+            name: auth-config
+        - secretRef:
+            name: auth-secrets     # 由 CI 动态创建（数据库、Redis 等）
+        volumeMounts:
+        - name: keys-volume
+          mountPath: /app/keys
+        livenessProbe:             # 存活探针（需应用提供 /health 端点）
+          httpGet:
+            path: /health
+            port: 5008
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        readinessProbe:            # 就绪探针
+          httpGet:
+            path: /health
+            port: 5008
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: keys-volume
+        persistentVolumeClaim:
+          claimName: auth-keys-pvc
