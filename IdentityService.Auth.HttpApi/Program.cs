@@ -256,7 +256,7 @@ using (var scope = app.Services.CreateScope())
         });
 
     // 立即触发一次（测试用，生产环境请移除）
-    recurringJobManager.Trigger("key-rotation");
+    //recurringJobManager.Trigger("key-rotation");
 }
 
 app.Run();
