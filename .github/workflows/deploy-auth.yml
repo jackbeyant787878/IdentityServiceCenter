@@ -17,6 +17,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./IdentityService.Auth.HttpApi/Dockerfile # 新增：明确指定 Dockerfile 路径
           push: true
           tags: |
             ${{ secrets.TENCENT_REGISTRY }}:latest
