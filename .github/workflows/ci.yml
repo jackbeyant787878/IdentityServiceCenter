@@ -1,4 +1,4 @@
-name: .NET 10 CI Build and Test
+name: IdentityService Build
 
 on:
   push:
