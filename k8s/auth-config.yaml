@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auth-config
+  namespace: identity
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:5008"
+  OPENIDDICTSETTINGS__ACCESSTOKENLIFETIMEMINUTES: "60"
+  OPENIDDICTSETTINGS__REFRESHTOKENLIFETIMEDAYS: "14"
+  OPENIDDICT__DISABLEENCRYPTION: "true"
+  KEYSETTINGS__BASEDIRECTORY: "/app/keys"
+  KEYSETTINGS__SIGNINGKEYLIFETIMEDAYS: "90"
+  KEYSETTINGS__ENCRYPTIONKEYLIFETIMEDAYS: "180"
+  # 内部 Issuer（无外部域名时，使用集群内 DNS，外部调用时客户端验签可暂时忽略 Issuer）
+  OPENIDDICTSETTINGS__ISSUER: "http://auth-svc.identity.svc.cluster.local:5008"
