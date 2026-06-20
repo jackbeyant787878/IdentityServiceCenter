@@ -1,6 +1,7 @@
 ﻿using IdentityService.Auth.Application.Security;
 using IdentityService.Auth.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Cryptography;
 
@@ -8,9 +9,12 @@ public class RsaKeyManager : IRsaKeyManager
 {
     private readonly string _keysBaseDir;
     private readonly object _lockObj = new();
-
-    public RsaKeyManager(IConfiguration configuration)
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<RsaKeyManager> _logger;
+    public RsaKeyManager(IConfiguration configuration, ILogger<RsaKeyManager> logger)
     {
+        _configuration = configuration;
+        _logger = logger;
         var baseDir = configuration["KeySettings:BaseDirectory"] ?? "keys";
         _keysBaseDir = Path.IsPathRooted(baseDir)
             ? baseDir
@@ -25,8 +29,10 @@ public class RsaKeyManager : IRsaKeyManager
     {
         lock (_lockObj)
         {
+            _logger.LogInformation("EnsureInitialized start");
             EnsureKeySetExists("signing");
             EnsureKeySetExists("encryption");
+            _logger.LogInformation("EnsureInitialized end");
         }
         return Task.CompletedTask;
     }
@@ -56,7 +62,7 @@ public class RsaKeyManager : IRsaKeyManager
             var publicPem = PemEncoding.Write("PUBLIC KEY", rsa.ExportSubjectPublicKeyInfo());
 
             // 统一 UTC 时间，避免时区差异导致 kid 混乱
-            var kid = $"{keyType}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid()}";
+            var kid = $"{keyType}-{DateTime.UtcNow.AddDays(GetKeyLifetimeDays(keyType)):yyyyMMddHHmmss}-{Guid.NewGuid()}";
 
             // 写入文件，使用 UTF-8 无 BOM 编码，Linux 原生兼容
             File.WriteAllText(privateKeyPath, privatePem, System.Text.Encoding.UTF8);
@@ -80,8 +86,28 @@ public class RsaKeyManager : IRsaKeyManager
     {
         lock (_lockObj)
         {
-            RotateKeySet("signing");
-            RotateKeySet("encryption");
+            if (IsKeyExpired("signing"))
+            {
+                RotateKeySet("signing");
+                _logger.LogInformation("Signing key rotated.");
+            }
+            else
+            {
+                _logger.LogInformation("Signing key is still valid, no rotation needed.");
+
+            }
+
+
+            if (IsKeyExpired("encryption"))
+            {
+                RotateKeySet("encryption");
+                _logger.LogInformation("Encryption key rotated.");
+            }
+            else { 
+              _logger.LogInformation("Encryption key is still valid, no rotation needed.");
+            }
+            
+
         }
         return Task.CompletedTask;
     }
@@ -131,4 +157,53 @@ public class RsaKeyManager : IRsaKeyManager
             .Build());
     }
     #endregion
+
+
+    /// <summary>
+    /// 通过解析 kid.txt 中的时间戳判断密钥是否已超过有效期
+    /// </summary>
+    private bool IsKeyExpired(string keyType)
+    {
+        var activeDir = Path.Combine(_keysBaseDir, keyType);
+        var kidPath = Path.Combine(activeDir, "kid.txt");
+
+        // 如果连 kid 文件都没有，视为过期，应该生成
+        if (!File.Exists(kidPath))
+            return true;
+
+        try
+        {
+            var kid = File.ReadAllText(kidPath).Trim();
+            // kid 格式：{keyType}-yyyyMMddHHmmss-{guid}
+            var parts = kid.Split('-');
+            if (parts.Length < 2) return true; // 格式异常，保守过期
+
+            // 时间戳位于第二个部分（索引 1）
+            var timestampPart = parts[1];
+            if (!DateTime.TryParseExact(timestampPart, "yyyyMMddHHmmss",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out DateTime createdUtc))
+                return true; // 解析失败，保守过期
+
+            var lifetimeDays = GetKeyLifetimeDays(keyType);
+            var expiration = createdUtc.AddDays(lifetimeDays);
+            return DateTime.UtcNow >= expiration;
+        }
+        catch
+        {
+            // 任何读取或解析异常都视为过期，触发轮转更安全
+            return true;
+        }
+    }
+
+
+    /// <summary>
+    /// 从配置读取密钥有效期（天），签名和加密可分别配置，默认 90 天
+    /// </summary>
+    private int GetKeyLifetimeDays(string keyType)
+    {
+        var configKey = $"KeySettings:{keyType}KeyLifetimeDays";
+        return Convert.ToInt32(_configuration[configKey] ?? "90");
+    }
 }

@@ -1,49 +1,55 @@
 ﻿using IdentityService.Auth.Application.Security;
+using IdentityService.Auth.Infrastructure.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using OpenIddict.Server;
 using System;
 using System.Collections.Generic;
 using System.Text;
 
 namespace IdentityService.Auth.Infrastructure.BackgroundServices
 {
-    public class KeyRotationBackgroundService : BackgroundService
+    public class KeyRotationBackgroundService 
     {
         private readonly IServiceScopeFactory _scopeFactory;
-        private readonly TimeSpan _checkInterval;
+        private readonly ReloadableOptions<OpenIddictServerOptions> _serverOptions;
 
-        public KeyRotationBackgroundService(IServiceScopeFactory scopeFactory, IConfiguration configuration)
+        private readonly ILogger<KeyRotationBackgroundService> _logger;
+
+        public KeyRotationBackgroundService(IServiceScopeFactory scopeFactory,  ReloadableOptions<OpenIddictServerOptions> serverOptions, ILogger<KeyRotationBackgroundService> logger)
         {
             _scopeFactory = scopeFactory;
-            // 检查频率：每天检查一次是否需要轮转
-            var checkDays = int.Parse(configuration["KeySettings:CheckIntervalDays"] ?? "1");
-            _checkInterval = TimeSpan.FromDays(checkDays);
+            _serverOptions = serverOptions;
+            _logger = logger;
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        public async Task ExecuteAsync()
         {
-            // 启动延迟：服务启动 5 分钟后执行首次检查
-            await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
 
-            while (!stoppingToken.IsCancellationRequested)
+            try
             {
-                try
-                {
-                    // 定时任务必须创建独立 Scope，避免单例生命周期问题
-                    using var scope = _scopeFactory.CreateScope();
-                    var keyRotationService = scope.ServiceProvider.GetRequiredService<IRsaKeyManager>();
+                _logger.LogInformation("密钥轮转定时任务开始执行...");
 
-                    await keyRotationService.RotateKeysAsync(stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    // 仅做日志记录，定时任务异常不能导致服务崩溃
-                    Console.WriteLine($"密钥轮转定时任务执行失败: {ex.Message}");
-                }
+                // 定时任务必须创建独立 Scope，避免单例生命周期问题
+                using var scope = _scopeFactory.CreateScope();
+                var keyRotationService = scope.ServiceProvider.GetRequiredService<IRsaKeyManager>();
 
-                await Task.Delay(_checkInterval, stoppingToken);
+                // 1. 轮转磁盘密钥
+                await keyRotationService.RotateKeysAsync();
+                // 2. 触发内存热加载原子替换
+                _serverOptions.Reload();
+
+                _logger.LogInformation("密钥轮转定时任务执行完成。");
             }
+            catch (Exception ex)
+            {
+                // 仅做日志记录，定时任务异常不能导致服务崩溃
+                Console.WriteLine($"密钥轮转定时任务执行失败: {ex.Message}");
+            }
+
+
         }
     }
 }

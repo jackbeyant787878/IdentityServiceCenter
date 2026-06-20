@@ -20,6 +20,8 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
     <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="7.5.0" />
+    <PackageReference Include="OpenIddict.Server" Version="7.5.0" />
+    <PackageReference Include="OpenIddict.Validation" Version="7.5.0" />
   </ItemGroup>
 
   <ItemGroup>

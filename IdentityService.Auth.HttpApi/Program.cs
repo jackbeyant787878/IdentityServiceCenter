@@ -1,14 +1,21 @@
+using Hangfire;
+using Hangfire.Dashboard;
+using Hangfire.SqlServer;
 using IdentityService.Auth.Application.Authentication.Commands;
 using IdentityService.Auth.Application.IRepositories;
 using IdentityService.Auth.Application.Security;
+using IdentityService.Auth.HttpApi;
 using IdentityService.Auth.Infrastructure.BackgroundServices;
 using IdentityService.Auth.Infrastructure.DataBase;
 using IdentityService.Auth.Infrastructure.Repositories;
 using IdentityService.Auth.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using OpenIddict.Abstractions;
+using OpenIddict.Server;
 using OpenIddict.Server.AspNetCore;
 using OpenIddict.Validation.AspNetCore;
 using PaymentCenter.Auth.Application.Security;
@@ -62,9 +69,6 @@ builder.Services.AddScoped<DistributedMerchantAbacGuard>();
 //注册密钥管理器（单例，全局唯一）
 builder.Services.AddSingleton<IRsaKeyManager, RsaKeyManager>();
 
-// 注册后台定时任务
-builder.Services.AddHostedService<KeyRotationBackgroundService>();
-
 // 构建服务提供者，提前执行密钥初始化（必须在注册OpenIddict之前）
 var sp = builder.Services.BuildServiceProvider();
 var keyManager = sp.GetRequiredService<IRsaKeyManager>();
@@ -72,6 +76,10 @@ await keyManager.EnsureInitializedAsync();
 
 // 3. 加载所有密钥（活跃+历史）
 var (signingKeys, encryptionKeys) = keyManager.LoadAllKeys();
+
+// 【关键】注册自定义的 OpenIddict 密钥配置器
+builder.Services.ConfigureOptions<ConfigureOpenIddictServerOptions>();
+
 
 builder.Services.AddOpenIddict()
     .AddCore(options =>
@@ -84,7 +92,7 @@ builder.Services.AddOpenIddict()
         // 显式激活密码流（Password Flow）与刷新 Token 流（Refresh Token）
         options.SetTokenEndpointUris("/api/connect/token");
         options.AllowPasswordFlow()
-              .AllowClientCredentialsFlow() 
+              .AllowClientCredentialsFlow()
               .AllowRefreshTokenFlow();
 
         // 从配置读取是否禁用加密（默认禁用，仅开发环境）
@@ -96,16 +104,16 @@ builder.Services.AddOpenIddict()
 
         // 注册签名和加密密钥
         // 3. 循环注册所有签名密钥（第一个加入的会自动成为签发 Key，后续的仅用于验签）
-        foreach (var signingKey in signingKeys)
-        {
-            options.AddSigningKey(signingKey);
-        }
+        //foreach (var signingKey in signingKeys)
+        //{
+        //    options.AddSigningKey(signingKey);
+        //}
 
-        // 4. 循环注册所有加密密钥（第一个加入的会自动成为加密 Key，后续的仅用于解密）
-        foreach (var encryptionKey in encryptionKeys)
-        {
-            options.AddEncryptionKey(encryptionKey);
-        }
+        //// 4. 循环注册所有加密密钥（第一个加入的会自动成为加密 Key，后续的仅用于解密）
+        //foreach (var encryptionKey in encryptionKeys)
+        //{
+        //    options.AddEncryptionKey(encryptionKey);
+        //}
 
         // 强迫 OIDC 服务接管 ASP.NET Core 的认证管线响应
         options.UseAspNetCore()
@@ -133,13 +141,20 @@ builder.Services.AddOpenIddict()
 
 
 
-    }) 
+    })
     .AddValidation(options =>
     {
         // 允许本地微服务直接在进程内本地解析和验签 OpenIddict 下发的 Access Token
         options.UseLocalServer();
         options.UseAspNetCore();
     });
+
+
+builder.Services.AddSingleton<ReloadableOptions<OpenIddictServerOptions>>();
+builder.Services.Replace(ServiceDescriptor.Singleton<IOptions<OpenIddictServerOptions>>(
+    sp => sp.GetRequiredService<ReloadableOptions<OpenIddictServerOptions>>()));
+
+
 
 builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
 builder.Services.AddAuthorization();
@@ -179,6 +194,27 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+#region HangeFire 定时任务配置
+
+builder.Services.AddScoped<KeyRotationBackgroundService>();
+// 配置 Hangfire 使用 SQL Server 存储（也可使用内存或 Redis）
+var hangfireConnString = builder.Configuration.GetConnectionString("HangfireConnection");
+builder.Services.AddHangfire(config =>
+    config.UseSqlServerStorage(hangfireConnString, new SqlServerStorageOptions
+    {
+        CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+        SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+        QueuePollInterval = TimeSpan.Zero,
+        UseRecommendedIsolationLevel = true,
+        DisableGlobalLocks = true
+    }));
+
+// 添加 Hangfire 服务器（处理作业）
+builder.Services.AddHangfireServer();
+
+#endregion
+
+
 
 // 6. 中间件管线路由建立（构建请求洋葱模型）
 var app = builder.Build();
@@ -197,5 +233,30 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new LocalRequestsOnlyAuthorizationFilter() } // 按需配置
+});
+
+
+
+
+// 注册每天凌晨5点执行的定时任务（使用本地时区）
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    recurringJobManager.AddOrUpdate<KeyRotationBackgroundService>(
+        "key-rotation",
+        job => job.ExecuteAsync(),
+        "0 5 * * *",                           // Cron 表达式
+        new RecurringJobOptions
+        {
+            TimeZone = TimeZoneInfo.Local       // 使用本地时区（凌晨5点）
+        });
+
+    // 立即触发一次（测试用，生产环境请移除）
+    recurringJobManager.Trigger("key-rotation");
+}
 
 app.Run();
