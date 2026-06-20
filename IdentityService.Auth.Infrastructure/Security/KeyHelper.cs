@@ -47,8 +47,12 @@ namespace IdentityService.Auth.Infrastructure.Security
             var privateKeyFile = section["PrivateKeyFile"] ?? $"{defaultFolder}/private.pem";
             var kidFile = section["KeyIdFile"] ?? $"{defaultFolder}/kid.txt";
 
-            var activePrivatePath = Path.Combine(keysBaseDir, privateKeyFile);
-            var activeKidPath = Path.Combine(keysBaseDir, kidFile);
+          
+
+            var activePrivatePath = Path.Combine(keysBaseDir, privateKeyFile.Replace('/', Path.DirectorySeparatorChar));
+            var activeKidPath = Path.Combine(keysBaseDir, kidFile.Replace('/', Path.DirectorySeparatorChar));
+
+
 
             if (!File.Exists(activePrivatePath))
                 throw new FileNotFoundException($"致命错误: 活跃 {defaultFolder} 私钥文件丢失: {activePrivatePath}");
@@ -75,7 +79,7 @@ namespace IdentityService.Auth.Infrastructure.Security
                 if (Directory.Exists(historyDir))
                 {
                     // 遍历 history 下的所有子文件夹（例如：v1, v2 等）
-                    foreach (var subDir in Directory.GetDirectories(historyDir))
+                    foreach (var subDir in Directory.GetDirectories(historyDir).OrderByDescending(d => d))
                     {
                         try
                         {
@@ -98,7 +102,7 @@ namespace IdentityService.Auth.Infrastructure.Security
                         }
                         catch (Exception ex)
                         {
-                            // 🧱 防御性容错：历史密钥损坏绝对不能导致服务启动崩溃
+                            // 防御性容错：历史密钥损坏绝对不能导致服务启动崩溃
                             Console.ForegroundColor = ConsoleColor.Yellow;
                             Console.WriteLine($"历史密钥加载跳过，目录 [{subDir}] 解析失败: {ex.Message}");
                             Console.ResetColor();

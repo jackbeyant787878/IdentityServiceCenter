@@ -1,5 +1,7 @@
 using IdentityService.Auth.Application.Authentication.Commands;
 using IdentityService.Auth.Application.IRepositories;
+using IdentityService.Auth.Application.Security;
+using IdentityService.Auth.Infrastructure.BackgroundServices;
 using IdentityService.Auth.Infrastructure.DataBase;
 using IdentityService.Auth.Infrastructure.Repositories;
 using IdentityService.Auth.Infrastructure.Security;
@@ -56,6 +58,21 @@ builder.Services.AddScoped<DistributedMerchantAbacGuard>();
 
 // 4. 骨架组装：OpenIddict 核心认证服务器配置
 
+
+//注册密钥管理器（单例，全局唯一）
+builder.Services.AddSingleton<IRsaKeyManager, RsaKeyManager>();
+
+// 注册后台定时任务
+builder.Services.AddHostedService<KeyRotationBackgroundService>();
+
+// 构建服务提供者，提前执行密钥初始化（必须在注册OpenIddict之前）
+var sp = builder.Services.BuildServiceProvider();
+var keyManager = sp.GetRequiredService<IRsaKeyManager>();
+await keyManager.EnsureInitializedAsync();
+
+// 3. 加载所有密钥（活跃+历史）
+var (signingKeys, encryptionKeys) = keyManager.LoadAllKeys();
+
 builder.Services.AddOpenIddict()
     .AddCore(options =>
     {
@@ -69,10 +86,6 @@ builder.Services.AddOpenIddict()
         options.AllowPasswordFlow()
               .AllowClientCredentialsFlow() 
               .AllowRefreshTokenFlow();
-
-       
-        // 加载签名和加密密钥
-        var (signingKeys, encryptionKeys) = KeyHelper.LoadKeys(builder.Configuration);
 
         // 从配置读取是否禁用加密（默认禁用，仅开发环境）
         var disableEncryption = builder.Configuration.GetValue<bool>("OpenIddict:DisableEncryption", true);
