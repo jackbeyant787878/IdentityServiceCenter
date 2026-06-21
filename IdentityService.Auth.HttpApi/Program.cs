@@ -6,6 +6,7 @@ using IdentityService.Auth.Application.IRepositories;
 using IdentityService.Auth.Application.Security;
 using IdentityService.Auth.HttpApi;
 using IdentityService.Auth.Infrastructure.BackgroundServices;
+using IdentityService.Auth.Infrastructure.Consul;
 using IdentityService.Auth.Infrastructure.DataBase;
 using IdentityService.Auth.Infrastructure.Repositories;
 using IdentityService.Auth.Infrastructure.Security;
@@ -166,9 +167,6 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(ExchangeTokenCommand).Assembly));
 
 
-
-
-
 // 5. Swagger 联调与 OAuth2 锁扣配置
 
 builder.Services.AddEndpointsApiExplorer();
@@ -216,6 +214,12 @@ builder.Services.AddHangfireServer();
 
 #endregion
 
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AuthDbContext>("SqlServer_AuthDB") // 自动检查数据库连通性
+    .AddRedis(builder.Configuration["Redis:Configuration"] ?? "", "Redis_Cache"); // 自动检查 Redis 连通性
+
+//注册服务到consul 注册中心
+builder.Services.AddConsulRegistry(builder.Configuration);
 
 
 // 6. 中间件管线路由建立（构建请求洋葱模型）
@@ -231,14 +235,14 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHealthChecks("/health");
 app.MapControllers();
+
 
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
     Authorization = new[] { new LocalRequestsOnlyAuthorizationFilter() } // 按需配置
 });
-
-
 
 
 // 注册每天凌晨5点执行的定时任务（使用本地时区）
