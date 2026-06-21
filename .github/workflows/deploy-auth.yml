@@ -55,6 +55,7 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
+            set -e  # 💡【核心改进】只要有任何一行命令失败，立即停止脚本并报错！
             cd /tmp/auth-deploy/k8s
 
             # ---- 1. 创建命名空间 ----
