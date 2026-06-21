@@ -117,7 +117,9 @@ builder.Services.AddOpenIddict()
 
         // 强迫 OIDC 服务接管 ASP.NET Core 的认证管线响应
         options.UseAspNetCore()
-               .EnableTokenEndpointPassthrough();
+               .EnableTokenEndpointPassthrough()
+               // 允许 HTTP 请求(默认opiddict 不允许,后面搭建完网关有域名证书绑定需移除);
+               .DisableTransportSecurityRequirement();   
 
         options.RegisterScopes(OpenIddictConstants.Scopes.OpenId, OpenIddictConstants.Scopes.Profile, OpenIddictConstants.Scopes.OfflineAccess);
 
