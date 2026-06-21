@@ -73,6 +73,7 @@ jobs:
               --from-literal=CONNECTIONSTRINGS__DEFAULTCONNECTION="Server=${{ secrets.SQLSERVER_HOST }},1433;Database=IdentityService;User Id=sa;Password=${{ secrets.SQLSERVER_PASSWORD }};TrustServerCertificate=True;MultipleActiveResultSets=true" \
               --from-literal=CONNECTIONSTRINGS__HANGFIRECONNECTION="Server=${{ secrets.SQLSERVER_HOST }},1433;Database=Hangfire;User Id=sa;Password=${{ secrets.SQLSERVER_PASSWORD }};TrustServerCertificate=True;MultipleActiveResultSets=true" \
               --from-literal=REDIS__CONFIGURATION="${{ secrets.REDIS_HOST }}" \
+              --from-literal=CONSULCONFIG__REGISTRYADDRESS="${{ secrets.CONSUL_REGISTRY_ADDRESS }}" \
               --dry-run=client -o yaml | kubectl apply -f -
 
             # ---- 4. 应用 ConfigMap、PVC ----
