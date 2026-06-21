@@ -9,7 +9,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 0                 # 单副本时不可超出（若以后扩副本可调整为 1）
-      maxUnavailable: 0           # 更新期间保证服务不中断
+      maxUnavailable: 1           # 更新期间保证服务不中断
   selector:
     matchLabels:
       app: auth-svc
