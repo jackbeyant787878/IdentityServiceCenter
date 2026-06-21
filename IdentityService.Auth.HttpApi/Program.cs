@@ -218,12 +218,9 @@ builder.Services.AddHangfireServer();
 
 // 6. 中间件管线路由建立（构建请求洋葱模型）
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "PaymentCenter Auth API v1"));
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "PaymentCenter Auth API v1"));
-}
 
 app.UseHttpsRedirection();
 app.UseRouting();
