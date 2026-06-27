@@ -17,3 +17,4 @@ data:
   # Consul 基础非敏感元数据配置
   CONSULCONFIG__SERVICENAME: "IdentityServiceCenter"
   CONSULCONFIG__SERVICEIP: "auth-svc.identity.svc.cluster.local"
+  CONSULCONFIG__REGISTRYADDRESS: "http://consul-server.consul.svc.cluster.local:8500"
