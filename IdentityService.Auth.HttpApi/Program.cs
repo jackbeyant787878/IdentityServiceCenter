@@ -25,7 +25,7 @@ using System.Security.Cryptography;
 var builder = WebApplication.CreateBuilder(args);
 
 
-// 1. 数据库底座：注入 SQL Server 2022
+// 1. 数据库底座：注入 SQL Server 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AuthDbContext>(options =>
 {
@@ -76,7 +76,7 @@ var keyManager = sp.GetRequiredService<IRsaKeyManager>();
 await keyManager.EnsureInitializedAsync();
 
 // 3. 加载所有密钥（活跃+历史）
-var (signingKeys, encryptionKeys) = keyManager.LoadAllKeys();
+//var (signingKeys, encryptionKeys) = keyManager.LoadAllKeys();
 
 // 【关键】注册自定义的 OpenIddict 密钥配置器
 builder.Services.ConfigureOptions<ConfigureOpenIddictServerOptions>();

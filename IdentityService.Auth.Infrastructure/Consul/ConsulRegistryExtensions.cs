@@ -74,7 +74,8 @@ namespace IdentityService.Auth.Infrastructure.Consul
                     {
                         TTL = TimeSpan.FromSeconds(15), // 15秒不报活则标记为故障
                         DeregisterCriticalServiceAfter = TimeSpan.FromMinutes(1) // 故障1分钟后自动剔除
-                    }
+                    },
+                    Tags=new[] { "anonymous_allowed" }//打上“允许匿名访问”的特权标签
                 };
 
                 _logger.LogInformation($"[生产环境] 开启自动注册管线: {_serviceId} -> {serviceIp}:{servicePort}");
