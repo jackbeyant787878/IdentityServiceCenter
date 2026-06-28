@@ -14,3 +14,7 @@ data:
   KEYSETTINGS__ENCRYPTIONKEYLIFETIMEDAYS: "180"
   # 内部 Issuer（无外部域名时，使用集群内 DNS，外部调用时客户端验签可暂时忽略 Issuer）
   OPENIDDICTSETTINGS__ISSUER: "http://auth-svc.identity.svc.cluster.local:5008"
+  # Consul 基础非敏感元数据配置
+  CONSULCONFIG__SERVICENAME: "IdentityServiceCenter"
+  CONSULCONFIG__SERVICEIP: "auth-svc.identity.svc.cluster.local"
+  CONSULCONFIG__REGISTRYADDRESS: "http://consul-server.consul.svc.cluster.local:8500"

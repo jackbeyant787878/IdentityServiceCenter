@@ -58,4 +58,4 @@ spec:
       volumes:
       - name: keys-volume
         persistentVolumeClaim:
-          claimName: auth-keys-pvc
+          claimName: shared-keys-pvc   # identity 命名空间下的共享 PVC
