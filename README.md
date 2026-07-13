@@ -106,7 +106,7 @@ As the underlying engine, OpenIddict fully takes over token issuance, verificati
 
 # ⚙️ Supported Authentication \& Authorization Models
 
-For the two core scenarios of **SaaS end users** and **microservice backend clusters**, the project implements two differentiated authorization models, fully covering business access and service communication security\.
+For the two core scenarios of**SaaS end users** and **microservice backend clusters**, the project implements two differentiated authorization models, fully covering business access and service communication security\.
 
 ## 1\. SaaS Account Password Authentication Model \(Frontend Merchant/Operator\)
 
@@ -170,7 +170,7 @@ Abandoning the insecure mode of hard\-coded and plaintext stored keys in traditi
 
 ### 2\.1 K3s Secret Static Encrypted Key Injection
 
-The RSA public and private key pairs required by the project are generated externally in compliance and then injected into K3s cluster Secret resources\. The K3s underlying layer automatically performs **static encrypted storage** on Secret data, making key plaintext unreadable outside the cluster\. All keys can only be decrypted and used by legitimate internal cluster services, eliminating key leakage and plaintext persistence risks from the infrastructure level\.
+The RSA public and private key pairs required by the project are generated externally in compliance and then injected into K3s cluster Secret resources\. The K3s underlying layer automatically performs**static encrypted storage** on Secret data, making key plaintext unreadable outside the cluster\. All keys can only be decrypted and used by legitimate internal cluster services, eliminating key leakage and plaintext persistence risks from the infrastructure level\.
 
 ### 2\.2 PVC Container Persistent Mounting
 
@@ -194,7 +194,7 @@ The biggest production pain point of automatic key rotation is the **one\-size\-
 
 Relying on a complete set of core source codes including `ConfigureOpenIddictOptions.cs`, `KeyRotationBackgroundService.cs` and `KeyManagementController.cs`, it realizes core capabilities of multi\-key coexistence, differentiated effectiveness and zero\-downtime hot update iteration:
 
-- **Full Key Loading Mechanism**: During service startup, the system automatically scans the PVC mounted key directory and loads the**latest active key \+ all unexpired historical keys**\. Key rotation only adds new keys without deleting or discarding old ones, retaining a complete set of keys in memory permanently\.
+- **Full Key Loading Mechanism**: During service startup, the system automatically scans the PVC mounted key directory and loads the **latest active key \+ all unexpired historical keys**\. Key rotation only adds new keys without deleting or discarding old ones, retaining a complete set of keys in memory permanently\.
 
 - **Differentiated Signing and Verification Logic**: Only the latest private key is used for token issuance to ensure the highest security and uniformity of new tokens; all new and old public keys in memory are traversed during token verification, and requests are allowed if any key verification passes, perfectly adapting to existing tokens and offline old services\.
 
@@ -369,4 +369,67 @@ Used for dynamic access of SaaS applications and microservice clients to realize
 # 📄 Open Source License
 
 This project is open sourced under the MIT license, free for commercial and non\-commercial use\. Welcome to Star, Fork and submit PRs for joint iterative optimization\.
+
+---
+
+# 6\. Full\-Lifecycle Architecture \& Key Rotation Execution Flowchart \(GitHub Renderable\)
+
+**Flowchart Description**: This end\-to\-end flowchart displays the complete technical link of the IdentityService distributed permission center, covering K3s key hosting, DDD/CQRS request processing, OIDC token issuance, multi\-key compatible verification, gateway traffic governance, microservice invocation, and zero\-downtime key smooth rotation\. It fully matches production cluster running logic and supports native GitHub Mermaid rendering\.
+
+```mermaid
+
+flowchart TB
+    %% Define color styles
+    classDef infra fill:#2c3e50,color:#fff
+    classDef core fill:#3498db,color:#fff
+    classDef security fill:#9b59b6,color:#fff
+    classDef business fill:#27ae60,color:#fff
+    classDef gateway fill:#f39c12,color:#fff
+    classDef rotate fill:#e74c3c,color:#fff
+
+    %% Infrastructure Key Layer
+    A[K3s Cluster Infra]:::infra -- Secret Encrypted Injection + PVC Persistent Mount --> B[IdentityService Private Key HoldingOnly Signing Authority]:::security
+    A --> C[Global Public Key SynchronizationDownstream Service Read-Only]:::security
+
+    %% Key Rotation Background Mechanism
+    B --> D[KeyRotationBackgroundServiceTimed Scan & Iteration]:::rotate
+    D --> E{Key Expiration Threshold Reached?}
+    E -- No --> F[Keep Active Key + Historical UnExpired Keys]
+    E -- Yes --> G[Generate New RSA Key PairUpdate K3s Secret & PVC]:::rotate
+    G --> H[Atomic Memory Hot RefreshZero Restart & Zero Downtime]:::rotate
+    H --> F
+
+    %% Client Request Entry
+    I[Client / Microservice Client]:::business --> J[Gateway Traffic Entry]:::gateway
+    J --> K[Gateway Multi-PublicKey VerificationNew/Old Key Compatibility Check]:::security
+
+    %% Verification Branch
+    K --> L{Token Verify Pass?}
+    L -- No --> M[Return 401 Unauthorized / Forbid]
+    L -- Yes --> N[Gateway Inject TraceId + Forward Request]:::gateway
+
+    %% DDD + CQRS Processing Core
+    N --> O[IdentityService HttpApi LayerZero Business Logic]:::core
+    O --> P[MediatR CQRS Scheduling]:::core
+    P --> Q{Write/Read Operation}
+    Q -- Write(Command) --> R[ExchangeTokenCommand/RevokeCommandBusiness Verification & Transaction]:::core
+    Q -- Read(Query) --> S[GetUserInfoQueryCache Accelerated Query]:::core
+
+    %% OIDC Token Issuance & Management
+    R --> T[OpenIddict 6.0 EngineDual-Token Generation]:::security
+    T --> U[Issue AccessToken + RefreshTokenSigned by Latest Private Key]:::security
+    S --> V[Return Standard User Identity Claims]
+
+    %% Downstream Microservice Invocation
+    U --> W[Business MicroservicesTrust Gateway Traffic, No Re-Verify]:::business
+    V --> W
+    W --> X[Execute Core Business Logic]:::business
+    X --> Y[Return Result Full Link Back]
+
+    %% Emergency Security Fuse
+    Z[Risk Control System Trigger]:::security --> AA[Manual Token Revoke Interface]
+    AA --> AB[OpenIddict State Machine CleanupSecond-Level Token Invalid]
+    AB --> AC[Global Blacklist Cache Update]
+    ```
+
 
