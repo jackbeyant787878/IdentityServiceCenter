@@ -372,7 +372,7 @@ This project is open sourced under the MIT license, free for commercial and non\
 
 ---
 
-# 6\. Full\-Lifecycle Architecture \& Key Rotation Execution Flowchart \(GitHub Renderable\)
+# 6\. Full\-Lifecycle Architecture \& Key Rotation Execution Flowchart \
 
 **Flowchart Description**: This end\-to\-end flowchart displays the complete technical link of the IdentityService distributed permission center, covering K3s key hosting, DDD/CQRS request processing, OIDC token issuance, multi\-key compatible verification, gateway traffic governance, microservice invocation, and zero\-downtime key smooth rotation\. It fully matches production cluster running logic and supports native GitHub Mermaid rendering\.
 
