@@ -1,336 +1,336 @@
-# IdentityService 分布式权限中心 · 核心技术架构文档
+# IdentityService Distributed Permission Center · Core Technical Architecture Documentation
 
-**IdentityService** 是一款基于 \.NET 10 构建的轻量化、高可扩展、分布式统一权限认证与授权中心。项目严格遵循 DDD 领域驱动设计、CQRS 读写分离架构及 SOLID 编程原则，基于 OpenIddict 6\.0\+ 实现标准 OAuth2\.0/OIDC 协议，支持 SaaS 账号密码认证、微服务间服务授权、双 Token 令牌机制，专为分布式微服务架构体系提供统一、安全、标准化的身份认证与权限管控能力。
+**IdentityService** is a lightweight, highly scalable, distributed unified authentication and authorization center built on \.NET 10\. Strictly following DDD \(Domain\-Driven Design\), CQRS \(Command Query Responsibility Segregation\) architecture and SOLID programming principles, it implements standard OAuth2\.0/OIDC protocols based on OpenIddict 6\.0\+\. It supports SaaS account password authentication, inter\-service authorization for microservices, and dual\-token mechanism, providing unified, secure and standardized identity authentication and permission management capabilities for distributed microservice architecture systems\.
 
-✅ **核心定位**：统一身份认证、分布式权限管控、微服务安全网关、SaaS 多租户身份底座
+✅ **Core Positioning**: Unified Identity Authentication, Distributed Permission Control, Microservice Security Gateway, SaaS Multi\-Tenant Identity Base
 
-✅ **适用场景**：微服务集群、SaaS 多租户系统、前后端分离项目、分布式企业级系统
-
----
-
-## 📋 目录
-
-- 架构设计（DDD / CQRS / SOLID）
-
-- 核心授权认证机制
-
-- 支持的授权认证模型
-
-- 令牌体系（JWT / AccessToken / RefreshToken）
-
-- RSA密钥容器化管理与平滑轮转重难点（核心增补）
-
-- 技术选型详解
-
-- 核心接口源码与落地原理
-
-- 快速开始
-
-- 项目核心优势
-
-- 开源许可证
+✅ **Applicable Scenarios**: Microservice clusters, SaaS multi\-tenant systems, front\-end and back\-end separated projects, distributed enterprise\-level systems
 
 ---
 
-# 🏗️ 架构设计
+## 📋 Table of Contents
 
-本项目摒弃传统分层架构的臃肿耦合问题，采用**DDD 领域驱动设计 \+ CQRS 读写分离 \+ SOLID 设计原则**三位一体的架构体系，实现高内聚、低耦合、可扩展、可维护的企业级权限服务架构。
+- Architecture Design \(DDD / CQRS / SOLID\)
 
-## 1\. DDD 领域驱动设计
+- Core Authentication \& Authorization Mechanism
 
-以「权限、身份、租户、角色、用户」为核心领域模型，拆分边界清晰的业务领域，彻底解决传统权限系统业务混杂、职责模糊的问题。
+- Supported Authentication \& Authorization Models
 
-- **领域层（Domain）**：核心业务实体（用户、角色、权限、租户）、领域规则、领域事件，不依赖任何外部框架，纯业务逻辑实现，保证业务稳定性。
+- Token System \(JWT / AccessToken / RefreshToken\)
 
-- **应用层（Application）**：协调领域逻辑，处理请求编排，不包含核心业务规则，依赖 MediatR 实现事件解耦。包含所有 **Command / Query**业务用例。
+- Key Difficulties of RSA Key Containerized Management and Smooth Rotation \(Core Supplement\)
 
-- **基础设施层（Infrastructure）**：数据库持久化、缓存实现、第三方服务对接、令牌生成与校验、OpenIddict 适配。
+- Detailed Technology Selection
 
-- **展示层（Presentation / HttpApi）**：\.NET 10 Web API 控制器，仅做协议接收、参数转发、结果响应，**零业务逻辑**。
+- Core Interface Source Code and Implementation Principles
 
-同时基于 DDD 领域事件机制，实现用户创建、角色变更、权限更新、租户配置变更等场景的异步通知，支撑分布式系统数据同步。
+- Quick Start
 
-## 2\. CQRS 读写分离架构
+- Core Project Advantages
 
-严格区分**读操作（Query）**与**写操作（Command）**，彻底解决读写争抢、性能瓶颈、业务复杂度叠加问题，与当前源码结构完全对齐。
-
-- **Command 写操作**：Token 交换、令牌吊销、客户端注册、登出等变更类操作，保证数据一致性、事务完整性。
-
-- **Query 读操作**：用户身份信息查询、权限解析等查询场景，支持缓存加速。
-
-通过 MediatR 中介者模式实现 CQRS 调度，控制器不直接调用 Service、不写业务，全部交由 Application 层处理，实现**请求与业务完全解耦**。
-
-## 3\. SOLID 编程原则落地
-
-项目全程遵循 SOLID 五大设计原则，结合 C\# 14 新特性优化代码结构，适配当前控制器与业务代码结构：
-
-- **单一职责**：ConnectController 只处理 OIDC 协议端点，ClientApplicationController 只处理客户端注册，职责完全隔离。
-
-- **开闭原则**：新增登录模式、新增授权类型只需扩展 Command，无需修改控制器接口。
-
-- **里氏替换**：所有基础设施实现可无缝替换（数据库、缓存、令牌服务）。
-
-- **接口隔离**：细粒度 IRepository、业务服务接口，无冗余依赖。
-
-- **依赖倒置**：控制器依赖 MediatR 抽象，不依赖具体业务实现。
+- Open Source License
 
 ---
 
-# 🔐 核心授权认证机制
+# 🏗️ Architecture Design
 
-系统基于标准 **OAuth2\.0 / OIDC 1\.0**协议，依托 OpenIddict 6\.0\+ 构建标准化、可定制的认证授权体系，兼顾通用性与业务定制化能力，同时适配 SaaS 租户场景与微服务集群场景。
+Abandoning the bloated coupling problems of traditional layered architecture, this project adopts a three\-in\-one architecture system of **DDD Domain\-Driven Design \+ CQRS Read\-Write Separation \+ SOLID Design Principles** to achieve a highly cohesive, low\-coupling, scalable and maintainable enterprise\-level permission service architecture\.
 
-## 1\. 核心协议能力
+## 1\. DDD Domain\-Driven Design
 
-- **OAuth2\.0**：主流的第三方授权、资源访问授权协议，解决微服务之间、客户端与服务端之间的资源授权问题。
+Taking "permissions, identities, tenants, roles, users" as the core domain models, it splits business domains with clear boundaries and completely solves the problems of mixed business and ambiguous responsibilities in traditional permission systems\.
 
-- **OIDC（OpenID Connect）**：基于 OAuth2\.0 扩展的身份认证协议，在授权基础上增加用户身份信息标准化传输，实现统一身份登录。
+- **Domain Layer**: Core business entities \(users, roles, permissions, tenants\), domain rules, and domain events\. It does not depend on any external framework and implements pure business logic to ensure business stability\.
 
-OpenIddict 作为底层引擎，全权接管令牌签发、校验、吊销、过期状态机，业务层只需要处理**用户合法性、租户合法性、权限装载**。
+- **Application Layer**: Coordinates domain logic and processes request orchestration without containing core business rules\. It relies on MediatR to achieve event decoupling and includes all **Command / Query** business use cases\.
 
-## 2\. 完整认证授权链路（源码对应链路）
+- **Infrastructure Layer**: Responsible for database persistence, cache implementation, third\-party service docking, token generation and verification, and OpenIddict adaptation\.
 
-1. **协议接收**：ConnectController\.Token 接口接收标准 OIDC 表单请求
+- **Presentation / HttpApi Layer**: \.NET 10 Web API controllers, which only complete protocol reception, parameter forwarding and result response, with **zero business logic**\.
 
-2. **业务校验**：ExchangeTokenCommand 完成账号、租户、风控、密码校验
+Meanwhile, based on the DDD domain event mechanism, asynchronous notification for scenarios such as user creation, role modification, permission update, and tenant configuration change is realized to support data synchronization in distributed systems\.
 
-3. **身份装载**：生成 ClaimsPrincipal 身份主体
+## 2\. CQRS Read\-Write Separation Architecture
 
-4. **协议签发**：OpenIddict 输出标准 AccessToken / RefreshToken
+It strictly distinguishes **read operations \(Query\)** and **write operations \(Command\)**, completely solving the problems of read\-write contention, performance bottlenecks and superimposed business complexity, which is fully aligned with the current source code structure\.
 
-5. **下游鉴权**：网关/微服务校验 Token，调用 UserInfo 接口获取可信用户信息
+- **Command Write Operations**: Change operations such as token exchange, token revocation, client registration, and logout, ensuring data consistency and transaction integrity\.
 
-6. **安全销毁**：支持主动 Revoke 吊销、Logout 注销
+- **Query Read Operations**: Query scenarios such as user identity information query and permission parsing, supporting cache acceleration\.
 
----
+The CQRS scheduling is implemented through the MediatR mediator pattern\. Controllers do not directly call services or write business logic, and all processing is delegated to the Application layer, realizing **complete decoupling of requests and business**\.
 
-# ⚙️ 支持的授权认证模型
+## 3\. Implementation of SOLID Programming Principles
 
-项目针对**SaaS 终端用户**与**微服务后端集群**两种核心场景，实现两套差异化授权模型，全覆盖业务访问与服务通信安全。
+The project fully follows the five SOLID design principles and optimizes the code structure with C\# 14 new features to adapt to the current controller and business code structure:
 
-## 1\. SaaS 账号密码认证模型（前端商户/操作员）
+- **Single Responsibility Principle**: ConnectController only processes OIDC protocol endpoints, and ClientApplicationController only processes client registration, with completely isolated responsibilities\.
 
-- **入口** /api/connect/token 标准账号密码授权模式
+- **Open/Closed Principle**: New login modes and authorization types can be extended by adding new Commands without modifying controller interfaces\.
 
-- **场景**：商户后台、收银员、租户操作员登录
+- **Liskov Substitution Principle**: All infrastructure implementations \(database, cache, token service\) can be seamlessly replaced\.
 
-- **能力**：多租户隔离、账号风控冻结、登录校验、权限封装
+- **Interface Segregation Principle**: Fine\-grained IRepository and business service interfaces with no redundant dependencies\.
 
-## 2\. 微服务间客户端授权模型（服务通信）
-
-- **入口** ClientApplicationManagement 客户端注册 \+ 服务密钥鉴权
-
-- **场景**：微服务互相调用、后台任务、内部系统对接
-
-- **能力**：动态注册客户端、服务级隔离、防止非法服务接入集群
+- **Dependency Inversion Principle**: Controllers depend on MediatR abstractions rather than specific business implementations\.
 
 ---
 
-# 🎫 令牌体系：JWT \+ 双 Token 机制
+# 🔐 Core Authentication \& Authorization Mechanism
 
-系统采用 OpenIddict 原生 JWT 生成机制，严格实现 **AccessToken \+ RefreshToken 双令牌模型**，适配金融/支付场景高安全要求。
+Based on the standard **OAuth2\.0 / OIDC 1\.0** protocol and built on OpenIddict 6\.0\+, the system forms a standardized and customizable authentication and authorization system that balances universality and business customization capabilities, and adapts to SaaS tenant scenarios and microservice cluster scenarios\.
 
-## 1\. AccessToken（短期业务令牌）
+## 1\. Core Protocol Capabilities
 
-- 短有效期，用于所有业务接口鉴权
+- **OAuth2\.0**: A mainstream third\-party authorization and resource access protocol that solves resource authorization problems between microservices and between clients and servers\.
 
-- 承载用户、租户、门店、角色、权限声明
+- **OIDC \(OpenID Connect\)**: An identity authentication protocol extended based on OAuth2\.0\. It adds standardized transmission of user identity information on the basis of authorization to realize unified identity login\.
 
-- 泄露风险极低，适合前端存储
+As the underlying engine, OpenIddict fully takes over token issuance, verification, revocation and expiration state management\. The business layer only needs to handle **user legitimacy, tenant legitimacy and permission loading**\.
 
-## 2\. RefreshToken（长期刷新令牌）
+## 2\. Complete Authentication \& Authorization Link \(Source Code Corresponding Link\)
 
-- 仅用于刷新令牌，不参与业务鉴权
+1. **Protocol Reception**: ConnectController\.Token interface receives standard OIDC form requests
 
-- 持久化存储，支持 **主动吊销**
+2. **Business Verification**: ExchangeTokenCommand completes account, tenant, risk control and password verification
 
-- 支撑用户无感续期，无需重复登录
+3. **Identity Loading**: Generates ClaimsPrincipal identity subject
 
-## 3\. 安全熔断能力（源码独有）
+4. **Protocol Issuance**: OpenIddict outputs standard AccessToken / RefreshToken
 
-支持运行中强制吊销任意 Token，适配风控系统“紧急红色按钮”能力，解决传统 JWT 无法作废的致命短板。
+5. **Downstream Authentication**: Gateway/microservices verify tokens and call the UserInfo interface to obtain credible user information
 
----
-
-# 🛡️ RSA密钥容器化管理与平滑轮转重难点（核心增补）
-
-本项目基于 OpenIddict 非对称加密体系，落地生产级微服务密钥安全管控方案，依托腾讯云 K3s 集群实现密钥加密托管、容器持久化挂载、全生命周期自动轮转与跨服务平滑兼容，彻底解决传统密钥明文存储、迭代更新一刀切、集群鉴权异常等行业痛点。
-
-## 1\. 公私钥分工核心设计
-
-采用标准非对称密钥分离机制，严格区分签发与验签职责，最小化密钥泄露安全风险，适配分布式微服务集群架构：
-
-- **权限中心（唯一签发端）**：独占 RSA 私钥，全权负责全局 AccessToken、RefreshToken 的签名颁发与加密，是整个微服务集群唯一的令牌签发源头。
-
-- **所有下游微服务（统一验签端）**：网关、支付、订单及所有业务微服务，仅加载 RSA 公钥，不具备令牌签发权限，仅用于接口请求 Token 验签、用户身份解析，实现权限最小化管控。
-
-## 2\. K3s 密钥安全托管与容器挂载方案
-
-摒弃传统配置文件硬编码、明文存储密钥的不安全模式，基于腾讯云 K3s 原生安全能力，实现密钥静态加密、持久化留存、容器无感注入。
-
-### 2\.1 K3s Secret 静态加密密钥注入
-
-项目所需的 RSA 私钥、公钥密钥对统一由外部合规生成后，注入腾讯云 K3s 集群 Secret 资源。K3s 底层自动对 Secret 数据进行**静态加密存储**，集群外部无法读取密钥明文，彻底杜绝密钥泄露、明文落地风险，所有密钥仅授权集群内部合法服务解密使用，从基础设施层面保障密钥安全。
-
-### 2\.2 PVC 容器持久化挂载
-
-为权限中心独立配置 K3s PVC 持久化存储卷，将加密后的密钥文件统一挂载至容器固定目录。彻底解决容器临时存储特性导致的密钥丢失问题，实现 Pod 重启、重建、版本更新后密钥数据永久留存。同时精细化管控文件读写权限，严格限制仅权限中心可读取私钥，下游微服务仅可读公钥，实现密钥分级隔离。
-
-## 3\. 密钥全生命周期管理机制
-
-系统支持自定义密钥过期策略，配置合理、适配生产场景的密钥生命周期，实现密钥自动化迭代更新，兼顾安全性与运维稳定性。
-
-- 针对核心签名密钥、加密密钥分别配置合理过期时间，规避长期使用同一密钥带来的泄露风险；
-
-- 密钥到达过期阈值后，系统自动生成全新合规密钥对，同步更新 K3s Secret 与 PVC 持久化目录；
-
-- 后续新启动、滚动更新的容器会自动注入并加载最新密钥，完成密钥无感迭代更替，无需人工干预。
-
-## 4\. 核心重难点：新旧密钥平滑兼容（源码深度分析）
-
-密钥自动化轮转最大的生产痛点为**新旧服务、新旧密钥不兼容的一刀切问题**：微服务集群滚动更新过程中，必然存在新旧版本服务长期共存的场景，若直接删除旧密钥、仅保留新密钥，会导致未下线的旧服务无法验签新密钥签发的 Token、新服务无法解析旧密钥签发的存量 Token，直接引发全局鉴权雪崩、业务大面积异常。本项目通过定制源码改造，彻底解决该核心难点。
-
-### 4\.1 核心源码支撑能力
-
-依托 `ConfigureOpenIddictOptions.cs`、`KeyRotationBackgroundService.cs`、`KeyManagementController.cs` 全套核心源码，实现多密钥共存、差异化生效、热更新无感迭代的核心能力：
-
-- **全量密钥加载机制**：服务启动时自动扫描 PVC 挂载密钥目录，加载**最新活跃密钥 \+ 所有未过期历史密钥**，密钥轮转仅新增密钥、不删除、不丢弃旧密钥，内存常驻完整密钥集合。
-
-- **签发与验签差异化逻辑**：令牌签发阶段仅使用最新私钥，保证新令牌统一规范、安全性最高；令牌验签阶段遍历内存中所有新旧公钥，任意密钥验签通过即可放行请求，完美兼容存量 Token 与未下线旧服务。
-
-- **无停机热更新机制**：后台定时任务自动执行密钥轮转，通过可重载配置实现内存原子刷新，无需重启服务、无需重建 Pod，新密钥即时生效，零业务中断。
-
-- **手动兜底机制**：提供接口手动触发密钥轮转，适配应急密钥更新、测试环境调试场景，完善运维兜底能力。
-
-### 4\.2 微服务集群平滑过渡逻辑
-
-- **滚动更新过渡期兼容**：集群分批更新 Pod，新旧服务共存期间，旧服务保留历史密钥集合，可正常校验新旧 Token；新服务加载全量密钥，双向兼容所有存量与新增令牌。
-
-- **渐进式清理策略**：密钥轮转全程不主动删除旧密钥，等待全局存量 Token 自然过期、所有旧版本服务完全滚动更新下线后，再人工统一清理无效历史密钥，彻底杜绝一刀切风险。
-
-- **下游服务无感适配**：网关、订单、支付等所有微服务无需改造业务代码，依托原生多公钥验签逻辑自动适配密钥迭代，全程无感、零改造、零异常。
-
-## 5\. 生产落地规范
-
-- 严禁手动删除 PVC 内历史密钥，避免存量 Token 与未下线服务鉴权失效；
-
-- 密钥轮转固定业务低峰期执行，规避高并发场景引发服务抖动；
-
-- 严格公私钥权限隔离，私钥仅权限中心持有，禁止下发下游微服务；
-
-- 配合 K3s 滚动更新策略分批迭代服务，保障集群平稳过渡。
+6. **Security Destruction**: Supports active Revoke revocation and Logout cancellation
 
 ---
 
-# 🛠️ 技术选型详解
+# ⚙️ Supported Authentication \& Authorization Models
 
-项目采用 \.NET 10 最新技术栈，充分利用 C\# 14 新特性，结合高性能、标准化开源框架构建企业级权限底座。
+For the two core scenarios of **SaaS end users** and **microservice backend clusters**, the project implements two differentiated authorization models, fully covering business access and service communication security\.
 
-## 1\. 核心框架：\.NET 10 Web API \+ C\# 14
+## 1\. SaaS Account Password Authentication Model \(Frontend Merchant/Operator\)
 
-充分运用新版语法精简工程结构：
+- **Entry**: /api/connect/token standard resource owner password credentials mode
 
-- **Primary Constructors**：控制器、Command、Query 精简构造注入
+- **Scenarios**: Merchant backend systems, cashiers, tenant operator login
 
-- **field 关键字**：精细化字段权限控制，提升领域模型安全性
+- **Capabilities**: Multi\-tenant isolation, account risk control freezing, login verification, permission encapsulation
 
-- 原生异步优化、AOT 编译、管道性能提升
+## 2\. Microservice Inter\-Client Authorization Model \(Service Communication\)
+
+- **Entry**: ClientApplicationManagement client registration \+ service key authentication
+
+- **Scenarios**: Microservice mutual calls, background tasks, internal system docking
+
+- **Capabilities**: Dynamic client registration, service\-level isolation, prevention of illegal service access to the cluster
+
+---
+
+# 🎫 Token System: JWT \+ Dual\-Token Mechanism
+
+The system adopts OpenIddict's native JWT generation mechanism and strictly implements the **AccessToken \+ RefreshToken dual\-token model**, meeting the high security requirements of financial and payment scenarios\.
+
+## 1\. AccessToken \(Short\-Term Business Token\)
+
+- Short validity period, used for authentication of all business interfaces
+
+- Carries user, tenant, store, role and permission claims
+
+- Extremely low leakage risk, suitable for front\-end storage
+
+## 2\. RefreshToken \(Long\-Term Refresh Token\)
+
+- Only used for token refresh, not participating in business authentication
+
+- Persistent storage, supporting **active revocation**
+
+- Enables users to renew tokens imperceptibly without repeated login
+
+## 3\. Security Fuse Capability \(Unique Source Code Feature\)
+
+Supports forced revocation of any token during operation, adapting to the "emergency red button" capability of the risk control system, solving the fatal flaw that traditional JWT cannot be invalidated actively\.
+
+---
+
+# 🛡️ Key Difficulties of RSA Key Containerized Management and Smooth Rotation \(Core Supplement\)
+
+Based on the OpenIddict asymmetric encryption system, this project implements a production\-level microservice key security management scheme\. Relying on Tencent Cloud K3s clusters, it realizes encrypted key hosting, container persistent mounting, full lifecycle automatic rotation and cross\-service smooth compatibility, completely solving industry pain points such as plaintext key storage, one\-size\-fits\-all iterative updates, and cluster authentication exceptions in traditional solutions\.
+
+## 1\. Core Design of Public\-Private Key Division of Labor
+
+Adopting a standard asymmetric key separation mechanism, it strictly distinguishes signing and verification responsibilities to minimize the security risk of key leakage and adapt to distributed microservice cluster architecture:
+
+- **Permission Center \(Exclusive Signing End\)**: Solely owns the RSA private key, fully responsible for the signature issuance and encryption of global AccessTokens and RefreshTokens, serving as the only token issuance source for the entire microservice cluster\.
+
+- **All Downstream Microservices \(Unified Verification End\)**: Gateways, payment systems, order systems and all business microservices only load RSA public keys without token issuance permissions, which are only used for interface request token verification and user identity parsing, realizing minimum privilege control\.
+
+## 2\. K3s Secure Key Hosting and Container Mounting Scheme
+
+Abandoning the insecure mode of hard\-coded and plaintext stored keys in traditional configuration files, it realizes static key encryption, persistent retention and container imperceptible injection based on native Tencent Cloud K3s security capabilities\.
+
+### 2\.1 K3s Secret Static Encrypted Key Injection
+
+The RSA public and private key pairs required by the project are generated externally in compliance and then injected into K3s cluster Secret resources\. The K3s underlying layer automatically performs **static encrypted storage** on Secret data, making key plaintext unreadable outside the cluster\. All keys can only be decrypted and used by legitimate internal cluster services, eliminating key leakage and plaintext persistence risks from the infrastructure level\.
+
+### 2\.2 PVC Container Persistent Mounting
+
+An independent K3s PVC persistent storage volume is configured for the permission center to mount encrypted key files to fixed container directories\. It completely solves the key loss problem caused by temporary container storage, realizing permanent retention of key data after Pod restart, reconstruction and version update\. Meanwhile, file read and write permissions are finely controlled: only the permission center can read the private key, and downstream microservices can only read the public key, achieving hierarchical key isolation\.
+
+## 3\. Full Lifecycle Key Management Mechanism
+
+The system supports customizable key expiration policies, configures production\-adaptable key lifecycles, and realizes automatic iterative key updates while balancing security and operation and maintenance stability\.
+
+- Configure reasonable expiration times for core signature keys and encryption keys to avoid leakage risks caused by long\-term use of a single key;
+
+- When keys reach the expiration threshold, the system automatically generates new compliant key pairs and synchronously updates K3s Secrets and PVC persistent directories;
+
+- Subsequently newly started and rolling\-updated containers automatically inject and load the latest keys to complete imperceptible key iteration without manual intervention\.
+
+## 4\. Core Difficulty: Smooth Compatibility of New and Old Keys \(In\-Depth Source Code Analysis\)
+
+The biggest production pain point of automatic key rotation is the **one\-size\-fits\-all incompatibility of new/old services and new/old keys**\. During the rolling update of microservice clusters, new and old service versions will inevitably coexist for a long time\. Directly deleting old keys and retaining only new keys will cause offline old services to fail to verify tokens signed by new keys and new services to fail to parse existing tokens signed by old keys, directly triggering global authentication collapse and large\-scale business exceptions\. This project completely solves this core pain point through customized source code modification\.
+
+### 4\.1 Core Source Code Supported Capabilities
+
+Relying on a complete set of core source codes including `ConfigureOpenIddictOptions.cs`, `KeyRotationBackgroundService.cs` and `KeyManagementController.cs`, it realizes core capabilities of multi\-key coexistence, differentiated effectiveness and zero\-downtime hot update iteration:
+
+- **Full Key Loading Mechanism**: During service startup, the system automatically scans the PVC mounted key directory and loads the**latest active key \+ all unexpired historical keys**\. Key rotation only adds new keys without deleting or discarding old ones, retaining a complete set of keys in memory permanently\.
+
+- **Differentiated Signing and Verification Logic**: Only the latest private key is used for token issuance to ensure the highest security and uniformity of new tokens; all new and old public keys in memory are traversed during token verification, and requests are allowed if any key verification passes, perfectly adapting to existing tokens and offline old services\.
+
+- **Zero\-Downtime Hot Update Mechanism**: Background scheduled tasks automatically execute key rotation, and atomic memory refresh is realized through reloadable configurations without service restart or Pod reconstruction, enabling immediate new key take effect with zero business interruption\.
+
+- **Manual Fallback Mechanism**: Provides interfaces to manually trigger key rotation, adapting to emergency key updates and test environment debugging scenarios, improving operation and maintenance fallback capabilities\.
+
+### 4\.2 Microservice Cluster Smooth Transition Logic
+
+- **Transition Compatibility During Rolling Update**: Pods are updated in batches in the cluster\. During the coexistence period of new and old services, old services retain historical key sets to normally verify new and old tokens; new services load full keys to achieve two\-way compatibility with all existing and new tokens\.
+
+- **Progressive Cleaning Strategy**: Old keys are never actively deleted during key rotation\. Invalid historical keys are uniformly cleaned manually after all global existing tokens expire naturally and all old service versions are completely rolled offline, completely avoiding one\-size\-fits\-all risks\.
+
+- **Downstream Service Imperceptible Adaptation**: All microservices such as gateways, order systems and payment systems do not require business code modification, and automatically adapt to key iteration relying on the native multi\-public\-key verification logic with zero modification and zero exceptions\.
+
+## 5\. Production Implementation Specifications
+
+- Manual deletion of historical keys in PVC is prohibited to avoid authentication failure of existing tokens and offline services;
+
+- Key rotation is fixed to be executed during business low peak periods to avoid service jitter in high\-concurrency scenarios;
+
+- Strict public\-private key permission isolation: private keys are exclusively held by the permission center and prohibited from being distributed to downstream microservices;
+
+- Cooperate with K3s rolling update strategy to iterate services in batches to ensure stable cluster transition\.
+
+---
+
+# 🛠️ Detailed Technology Selection
+
+The project adopts the latest \.NET 10 technology stack, makes full use of C\# 14 new features, and builds an enterprise\-level permission base with high\-performance and standardized open\-source frameworks\.
+
+## 1\. Core Framework: \.NET 10 Web API \+ C\# 14
+
+Fully leverages new version syntax to streamline project structure:
+
+- **Primary Constructors**: Streamlines constructor injection for controllers, Commands and Queries
+
+- **field Keyword**: Refined field permission control to improve domain model security
+
+- Native asynchronous optimization, AOT compilation, and pipeline performance improvement
 
 ## 2\. OpenIddict 6\.0\+
 
-替代笨重的 IdentityServer，轻量化、可定制、协议标准，完全掌控 OAuth2/OIDC 全流程。
+Replaces the cumbersome IdentityServer with lightweight, customizable and protocol\-standard capabilities, fully controlling the entire OAuth2/OIDC process\.
 
-## 3\. EF Core 10 \+ 数据库适配
+## 3\. EF Core 10 \+ Database Adaptation
 
-基于 Entity Framework Core 10 采用 CodeFirst 模式开发，支持 SQL Server 2022，可灵活适配主流关系型数据库，满足不同部署环境需求。
+Developed with CodeFirst mode based on Entity Framework Core 10, supporting SQL Server 2022, and flexibly adaptable to mainstream relational databases to meet the deployment requirements of different environments\.
 
 ## 4\. Redis \+ \.NET10 HybridCache
 
-二级缓存架构，缓存权限、租户、令牌黑名单，大幅提升鉴权吞吐，适配高并发分布式场景。
+Secondary cache architecture caches permissions, tenants and token blacklists, greatly improving authentication throughput and adapting to high\-concurrency distributed scenarios\.
 
 ## 5\. MediatR
 
-实现 CQRS 架构，控制器与业务彻底解耦，所有请求走管道模式，统一拦截、日志、事务、异常处理。
+Implements CQRS architecture, completely decoupling controllers and business\. All requests adopt the pipeline mode to realize unified interception, logging, transaction and exception handling\.
 
 ---
 
-# 💻 核心接口源码落地原理（完全对齐工程代码）
+# 💻 Core Interface Source Code Implementation Principles \(Fully Aligned with Engineering Code\)
 
-整个 HttpApi 层只有两个控制器，**零业务逻辑、零 SQL、零缓存操作**，严格遵循 CQRS \+ 中介者架构，是标准企业级 DDD 落地范例。
+The entire HttpApi layer only has two controllers, with **zero business logic, zero SQL operations and zero cache operations**\. It strictly follows the CQRS \+ mediator architecture and serves as a standard enterprise\-level DDD implementation example\.
 
-## 1\. ConnectController（标准 OIDC 四大协议端点）
+## 1\. ConnectController \(Four Standard OIDC Protocol Endpoints\)
 
-该控制器为系统对外核心安全入口，100% 遵循 OIDC 协议规范，适配浏览器登录、服务鉴权、风控熔断、单点登出。
+As the core external security entrance of the system, it fully complies with OIDC protocol specifications, adapting to browser login, service authentication, risk control fusing and single sign\-on logout\.
 
-### 1\.1 Token 令牌交换接口 /api/connect/token
+### 1\.1 Token Exchange Interface /api/connect/token
 
-- **请求约束**：强制 `application/x-www-form-urlencoded`，标准 OIDC 表单提交，防止非法 Json 攻击
+- **Request Constraints**: Enforces `application/x-www-form-urlencoded` standard OIDC form submission to prevent illegal JSON attacks
 
-- **源码流程**：接收 OpenIddict 标准请求 \-\> 转发 **ExchangeTokenCommand** \-\&gt; 根据业务结果返回登录/禁止/错误
+- **Source Code Process**: Receive standard OpenIddict requests \- forward to **ExchangeTokenCommand** \- return login/prohibition/error results according to business conditions
 
-- **成功逻辑**：返回 SignIn 身份凭证，OpenIddict 自动生成双 Token
+- **Success Logic**: Return SignIn identity credentials, and OpenIddict automatically generates dual tokens
 
-- **失败逻辑**：区分 Forbid 禁止登录、参数错误、账号风控冻结
+- **Failure Logic**: Distinguish Forbid login prohibition, parameter errors and account risk control freezing
 
-- **设计亮点**：协议层与业务层完全隔离，支持任意授权模式扩展
+- **Design Highlights**: Complete isolation of protocol layer and business layer, supporting arbitrary authorization mode expansion
 
-### 1\.2 UserInfo 用户可信信息接口 /api/connect/userinfo
+### 1\.2 UserInfo Trusted User Information Interface /api/connect/userinfo
 
-- **鉴权级别**：必须携带合法有效的 OpenIddict AccessToken
+- **Authentication Level**: Valid OpenIddict AccessToken is mandatory
 
-- **核心作用**：下游微服务/支付网关**二次可信校验**，防止伪造本地 Token
+- **Core Function**: Secondary trusted verification for downstream microservice/payment gateways to prevent forged local tokens
 
-- **源码逻辑**：从 Token 解析 subject\(用户ID\) \-\> 执行 **GetUserInfoQuery** \-\> 校验用户激活状态 \-\> 返回标准化用户声明
+- **Source Code Logic**: Parse subject \(user ID\) from token \- execute **GetUserInfoQuery** \- verify user activation status \- return standardized user claims
 
-- **返回结构**：sub、username、user\_type、merchant\_id、store\_id、status，适配网关统一解析
+- **Return Structure**: sub, username, user\_type, merchant\_id, store\_id, status, adapted to unified gateway parsing
 
-- **风控能力**：自动拦截冻结、注销、风控黑名单用户
+- **Risk Control Capability**: Automatically intercept frozen, logged\-out and blacklisted users under risk control
 
-### 1\.3 Revoke 令牌紧急吊销接口 /api/connect/revoke
+### 1\.3 Token Emergency Revocation Interface /api/connect/revoke
 
-- **业务定位**：支付风控系统紧急熔断入口
+- **Business Positioning**: Emergency fusing entrance for payment risk control systems
 
-- **能力**：支持吊销 AccessToken / RefreshToken
+- **Capabilities**: Supports revocation of AccessTokens and RefreshTokens
 
-- **原理**：依托 OpenIddict 状态机，自动清理缓存与数据库令牌记录，秒级失效
+- **Principle**: Relying on the OpenIddict state machine, it automatically cleans up cached and database token records to achieve second\-level invalidation
 
-- **适用场景**：密钥泄露、终端被盗、商户欠费、操作员异常
+- **Applicable Scenarios**: Key leakage, terminal theft, merchant arrears, abnormal operator behaviors
 
-### 1\.4 Logout 安全登出接口 /api/connect/logout
+### 1\.4 Secure Logout Interface /api/connect/logout
 
-- **双层注销机制**：清空本地 Cookie 登录态 \+ 销毁 OpenIddict 服务端 SSO 凭证
+- **Dual Cancellation Mechanism**: Clear local Cookie login status \+ destroy server\-side SSO credentials of OpenIddict
 
-- **效果**：彻底销毁登录上下文，杜绝单点登录残留
+- **Effect**: Completely destroy the login context and eliminate residual single sign\-on status
 
-## 2\. ClientApplicationManagementController（客户端注册管理）
+## 2\. ClientApplicationManagementController \(Client Registration Management\)
 
-用于动态接入 SaaS 应用、微服务客户端，实现集群服务准入管控。
+Used for dynamic access of SaaS applications and microservice clients to realize cluster service access control\.
 
-### 2\.1 应用注册接口 /api/clientapplicationmanagement/register
+### 2\.1 Application Registration Interface /api/clientapplicationmanagement/register
 
-- **入参模型**：AppName、ClientType、TenantId（租户隔离）
+- **Input Parameters**: AppName, ClientType, TenantId \(tenant isolation\)
 
-- **源码流程**：DTO 接收 \-\> 封装 **RegisterClientApplicationCommand** \-\> MediatR 调度生成客户端凭证
+- **Source Code Process**: DTO reception \- encapsulate **RegisterClientApplicationCommand** \- MediatR scheduling to generate client credentials
 
-- **安全机制**：客户端密钥仅首次返回，线上需开启平台管理员权限策略
+- **Security Mechanism**: Client keys are only returned for the first time, and platform administrator permission policies need to be enabled online
 
-- **场景**：新微服务接入、商户自研应用注册、第三方信任系统接入
+- **Scenarios**: New microservice access, merchant self\-developed application registration, third\-party trusted system access
 
-## 3\. 工程统一架构规范（源码体现）
+## 3\. Unified Engineering Architecture Specifications \(Reflected in Source Code\)
 
-- **无业务控制器**：所有逻辑下沉 Command/Query，可单独单元测试
+- **Business\-Free Controllers**: All logic is sunk into Commands/Queries, supporting independent unit testing
 
-- **协议标准化**：完全对齐 OIDC 规范，兼容所有标准客户端
+- **Protocol Standardization**: Fully aligned with OIDC specifications, compatible with all standard clients
 
-- **强安全隔离**：用户登录、服务授权、令牌吊销、客户端注册权限隔离
+- **Strong Security Isolation**: Isolated permissions for user login, service authorization, token revocation and client registration
 
-- **金融级风控**：支持主动令牌作废、账号状态拦截、租户资源隔离
+- **Financial\-Level Risk Control**: Supports active token invalidation, account status interception and tenant resource isolation
 
 ---
 
-# 🚀 快速开始
+# 🚀 Quick Start
 
-## 1\. 环境依赖
+## 1\. Environment Dependencies
 
 - \.NET 10 SDK / Runtime
 
@@ -338,36 +338,35 @@ OpenIddict 作为底层引擎，全权接管令牌签发、校验、吊销、过
 
 - Redis 6\.0\+
 
-## 2\. 部署步骤
+## 2\. Deployment Steps
 
-1. 克隆项目，配置数据库、Redis、OpenIddict 参数
+1. Clone the project and configure database, Redis and OpenIddict parameters
 
-2. 执行 EF Core CodeFirst 迁移，自动建表
+2. Execute EF Core CodeFirst migration to automatically create data tables
 
-3. 初始化超级管理员、默认角色、基础权限
+3. Initialize super administrator, default roles and basic permissions
 
-4. 启动服务，调试 OIDC 标准接口
-
----
-
-# ✨ 项目核心优势
-
-- **架构极致规范**：纯正 DDD \+ CQRS \+ MediatR 落地，无传统三层架构冗余
-
-- **协议官方标准**：OpenIddict 原生 OAuth2\.0/OIDC，不造轮子、兼容全生态
-
-- **金融级安全**：支持主动令牌吊销、风控拦截、双 Token、租户隔离、单次密钥展示
-
-- **\.NET10 新技术栈**：C\#14 新语法、HybridCache、AOT 性能拉满
-
-- **双场景全覆盖**：SaaS 用户登录 \+ 微服务服务授权一体化
-
-- **密钥安全高可用**：K3s 加密托管 \+ PVC 持久化 \+ 密钥全生命周期轮转 \+ 新旧密钥平滑兼容，彻底解决集群密钥迭代痛点
+4. Start the service and debug standard OIDC interfaces
 
 ---
 
-# 📄 开源许可证
+# ✨ Core Project Advantages
 
-本项目基于 MIT 开源协议开源，可自由用于商业、非商业项目，欢迎 Star、Fork、提交 PR 共同迭代优化。
+- **Extremely Standard Architecture**: Pure DDD \+ CQRS \+ MediatR implementation without redundant traditional three\-layer architecture
 
-> 
+- **Official Standard Protocol**: Native OpenIddict OAuth2\.0/OIDC, no repeated wheel creation, full ecological compatibility
+
+- **Financial\-Level Security**: Supports active token revocation, risk control interception, dual\-token mechanism, tenant isolation and single key display
+
+- **\.NET10 New Technology Stack**: C\#14 new syntax, HybridCache, AOT performance optimization
+
+- **Dual\-Scenario Full Coverage**: Integrated SaaS user login and microservice service authorization
+
+- **High\-Availability Key Security**: K3s encrypted hosting \+ PVC persistence \+ full\-lifecycle key rotation \+ smooth new/old key compatibility, completely solving cluster key iteration pain points
+
+---
+
+# 📄 Open Source License
+
+This project is open sourced under the MIT license, free for commercial and non\-commercial use\. Welcome to Star, Fork and submit PRs for joint iterative optimization\.
+
