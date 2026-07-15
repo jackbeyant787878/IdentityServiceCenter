@@ -23,6 +23,8 @@ This comparison evaluates four mainstream solutions: custom JWT authentication, 
 | Long-Term Operational Cost Efficiency | 2.0 (High vulnerability risk, non-standard) | 5.0 (Limited capabilities) | 3.0 (Prohibitive upgrade cost) | 8.5 (Actively maintained, stable) |
 
 ## 4. Core Trade-Off Decision Logic
+<img width="982" height="506" alt="image" src="https://github.com/user-attachments/assets/c3c5756a-da25-4e40-a2c6-e2de0a8d9a7b" />
+
 ### 4.1 Why Custom JWT is Rejected
 Custom JWT implementations are lightweight and dependency-free, but they lack standardized authorization protocols, suffer from unstructured token lifecycle management, carry significant security vulnerabilities, and cannot support third-party system integration. Enterprise-wide adoption would lead to inconsistent authentication rules, compliance gaps, and governance challenges, making it unsuitable as a unified identity foundation.
 
